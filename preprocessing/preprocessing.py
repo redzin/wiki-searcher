@@ -7,6 +7,8 @@ from operator import itemgetter
 import os.path
 import sys
 import codecs
+import numpy as np
+import collections as col
 
 
 def process_all_articles():
@@ -18,7 +20,7 @@ def process_all_articles():
         hash_tree(string, filename)
         print("Finished processing " + filename)
 
-def preprocess_article(string):
+def preprocess_article_old(string):
     
     # Get the text part of the article xml by using Python's XML parser
     #tree = ET.parse(filename) # parse the xml tree
@@ -48,6 +50,54 @@ def preprocess_article(string):
     return string
 
 
+
+def preprocess_article(string):
+    
+    string = string.lower()
+    string = re.sub(r"/(<![^>]+>)/", '', string)
+    string = re.sub(r"/\{\{\s?/", '<', string)
+    string = string.replace('}}', ' />')
+    string = string.replace('<! />', '')
+
+    
+    string = re.sub(r"/'{2,6}/", '', string)
+    string = re.sub(r"/[=\s]+External [lL]inks[\s=]+/", '', string)
+    string = re.sub(r"/[=\s]+See [aA]lso[\s=]+/", '', string)
+    string = re.sub(r"/[=\s]+References[\s=]+/", '', string)
+    string = re.sub(r"/[=\s]+Notes[\s=]+/", '', string)
+    string = re.sub(r"/\{\{([^\}]+)\}\}/", '', string)
+    
+    string = re.sub(r"/\[\[([^:\|\]]+)\|([^:\]]+)\]\]/", '$2', string)
+    
+    string = re.sub(r"/\(\[[^\]]+\]\)/", '', string)
+    string = re.sub(r"/\[\[([^:\]]+)\]\]/", '$1', string)
+    string = re.sub(r"/\*?\s?\[\[([^\]]+)\]\]/", '', string)
+    string = re.sub(r"/\*\s?\[([^\s]+)\s([^\]]+)\]/", '$2', string)
+    string = re.sub(r"/\n(\*+\s?)/", '', string)
+    string = re.sub(r"/\n{3,}/", '', string)
+    string = re.sub(r"/<ref[^>]?>[^>]+>/", '', string)
+    string = re.sub(r"/<cite[^>]?>[^>]+>/", '', string)
+    
+    string = re.sub(r"/={2,}/", '', string)
+    string = re.sub(r'/{?class="[^"]+"/', '', string)
+    string = re.sub(r'/!?\s?width="[^"]+"/', '', string)
+    string = re.sub(r'/!?\s?height="[^"]+"/', '', string)
+    string = re.sub(r'/!?\s?style="[^"]+"/', '', string)
+    string = re.sub(r'/!?\s?rowspan="[^"]+"/', '', string)
+    string = re.sub(r'/!?\s?bgcolor="[^"]+"/', '', string)
+    
+    string = re.sub(r'/\n\n/', "<br />\n<br />\n", string)
+    string = re.sub(r'/\r\n\r\n/', "<br />\r\n<br />\r\n", string)
+    
+    string = re.sub(r'[^a-z\d\s].*?', '', string) # remove any remaining non-alphanumeric characters
+    string = re.sub(r'\n', ' ', string)
+    string = re.sub(r'\s+', ' ', string)
+
+    return string
+
+
+
+    
 def hash_tree(string, article, tree = {}, clean = False):
     words = [[m.group(0), m.start()] for m in re.finditer(r'\S+', string)]
     sorted_words = sorted(words, key=itemgetter(0)) # sort the list to save the hard drive
@@ -83,7 +133,6 @@ def hash_tree(string, article, tree = {}, clean = False):
     pickle.dump(tree, file)
     file.close()
 
-        
     return tree
     
 def add_word_to_tree(tree, word, index, article):
@@ -93,35 +142,48 @@ def add_word_to_tree(tree, word, index, article):
     if (len(word) < 1): # terminate recursion
         if ('nodes' not in tree.keys()):
             tree['nodes'] = {article : []}
-        elif (article not in tree['nodes'].keys()):
-            tree['nodes'][article] =  []
-        tree['nodes'][article].append(index)
-    #elif (len(word) == 1): # terminate recursion
-    #    if ('nodes' not in tree[word].keys()):
-    #        tree[word]['nodes'] = {article : []}
-    #    elif (article not in tree[word]['nodes'].keys()):
-    #        tree[word]['nodes'][article] =  []
-    #    tree[word]['nodes'][article].append(index)
+        if (article not in list(tree['nodes'].keys())):
+            tree['nodes'][article] = []
+        tree['nodes'][article].append(index) # append word to article
+        tree['sorted_nodes'] = sorted(tree['nodes'], key=lambda k: len(tree['nodes'][k]), reverse=True) # sort keys by length of values
     else:
-        add_word_to_tree(tree[word[0]], word[1:], index, article)
+        add_word_to_tree(tree[word[0]], word[1:], index, article) # recursive call, cut first letter and go to appropriate subtree
 
-def search(s):
+def search(s, top=10):
     if(os.path.isfile('trees/'+s[0]+'.tree') == True):
         file = open('trees/'+s[0]+'.tree', 'rb+')
         tree = pickle.load(file)
         file.close()
-        return search_helper(s[1:], tree)
+        return search_helper(s[1:], tree, top)
     else:
         return "Not found"
 
-def search_helper(s, tree):
+def search_helper(s, tree, top):
     if (len(s) < 1):
         print('Invalid search string')
         return {}
     if (len(s) == 1):
         return tree[s]['nodes']
     else:
-        return {} if s[0] not in tree.keys() else search_helper(s[1:], tree[s[0]])
+        add_word_to_tree(tree[word[0]], word[1:], index, article) # recursive call, cut first letter and go to appropriate subtree
+
+def search(s, top=10):
+    if(os.path.isfile('trees/'+s[0]+'.tree') == True):
+        file = open('trees/'+s[0]+'.tree', 'rb+')
+        tree = pickle.load(file)
+        file.close()
+        return search_helper(s[1:], tree, top)
+    else:
+        return "Not found"
+
+def search_helper(s, tree, top):
+    if (len(s) < 1):
+        print('Invalid search string')
+        return {}
+    if (len(s) == 1):
+        return tree[s]['nodes'].items()[0:top-1]
+    else:
+        return {} if s[0] not in tree.keys() else search_helper(s[1:], tree[s[0]], top)
 
 class WikiContentHandler(xml.sax.ContentHandler):
     
@@ -133,7 +195,6 @@ class WikiContentHandler(xml.sax.ContentHandler):
         self.result = ""
         self.tag = ""
         self.name = ""
-        self.count = 0
     
     def startElement(self, name, attrs):
         if (name == "id"):
@@ -163,19 +224,17 @@ class WikiContentHandler(xml.sax.ContentHandler):
             #file.write(self.tag.encode("utf-8"))
             #file.write(self.name.encode("utf-8"))
             file.write(self.result.encode("utf-8"))
-            #pickle.dump(self.tag, file)
-            #pickle.dump(self.name, file)
-            #pickle.dump(self.result, file)
             file.close()
             print("Parsing " + self.name + " finished")
-            self.count = self.count + 1
+            
+            # Add to tree
+            hash_tree(self.result, self.tag, clean = True)
+            
+            # Reset
             self.tag = ""
             self.name = ""
             self.result = ""
 
-            if(self.count > 100):
-                exit
-        
     def characters(self, content):
         if (self.id):
             self.tag = content
@@ -191,7 +250,7 @@ class WikiContentHandler(xml.sax.ContentHandler):
 
 parser = xml.sax.make_parser()
 parser.setContentHandler(WikiContentHandler())
-parser.parse(open("enwiki-20170820-pages-articles-multistream.xml","r", encoding="utf8"))
+parser.parse(open("../../../wikipedia/enwiki-20170820-pages-meta-current.xml","r", encoding="utf8"))
 
 #preprocess_all_articles()
 
