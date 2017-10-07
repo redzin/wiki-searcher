@@ -1,30 +1,22 @@
-#  -*- coding: utf-8 -*-
-import xml.sax
-import xml.etree.ElementTree as ET
-import re
-import pickle
-from operator import itemgetter
 import sys
-import codecs
+import pickle
+
+folder = "dicts/"
 
 
+query = "that[0,20]cat"
 
-def search_tree(s, top=10):
-    if(os.path.isfile('trees/'+s[0]+'.tree') == True):
-        file = open('trees/'+s[0]+'.tree', 'rb+')
-        tree = pickle.load(file)
-        file.close()
-        return search_helper(s[1:], tree, top)
-    else:
-        return "Not found"
+def search(query):
+    
+    query_terms = query.split('[')    
+    
+    file = open(folder+query[0], 'rb+')
+    word_dict = pickle.load(file)
+    file.close()
 
-def search_helper(s, tree, top):
-    if (len(s) < 1):
-        print('Invalid search string')
-        return {}
-    if (len(s) == 1):
-        return tree[s]['nodes'].items()[0:top-1]
-    else:
-        return {} if s[0] not in tree.keys() else search_helper(s[1:], tree[s[0]], top)
+    return query_terms
 
+
+if __name__ == "__main__":
+    print(search(query))
 

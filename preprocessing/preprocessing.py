@@ -7,48 +7,6 @@ from operator import itemgetter
 import os.path
 import sys
 import codecs
-import numpy as np
-import collections as col
-
-
-def process_all_articles():
-    tree = {}
-    for filename in os.listdir('articles'):
-        #if filename[:1].lower() == 'ab':
-        #    break
-        string = preprocess_article(filename)
-        hash_tree(string, filename)
-        print("Finished processing " + filename)
-
-def preprocess_article_old(string):
-    
-    # Get the text part of the article xml by using Python's XML parser
-    #tree = ET.parse(filename) # parse the xml tree
-    #text = tree.getroot()[1][3][7].text # get the contents of the text-node
-    
-    #string = ""
-    #for c in text:
-    #    string += c # convert the list of characters to a Python string
-    
-    # Clean the string
-    string = re.sub(r'\n', ' ', string) # remove new-line
-    string = re.sub(r'\{\{.*?\}\}', ' ', string) # remove any {{...}} sections (metadata)
-    string = re.sub(r'\<.*?\>', ' ', string) # remove HTML tags
-    string = re.sub(r'\[\[([a-zA-Z\d|.:/])*\|', ' ', string) # remove the target of wiki-markup links to other articles
-    string = re.sub(r'\=.*?\=', ' ', string) # removes =...=
-    string = re.sub(r'https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)', ' ', string) # remove urls  
-    string = string.lower() # lower case everything
-    string = re.sub(r'\(.*?\)', ' ', string) # removes parenthses
-    #string = re.sub(r'[^a-z\d\s].*?', '', string) # remove any remaining non-alphanumeric characters
-    string = re.sub(' +', ' ', string) # remove trailing spaces
-    string = re.sub('^ ', '', string) # remove any space at the front of the string
-
-    #file = open(filename, 'wb+')
-    #pickle.dump(string, file)
-    #file.close()
-    
-    return string
-
 
 
 def preprocess_article(string):
@@ -149,41 +107,53 @@ def add_word_to_tree(tree, word, index, article):
     else:
         add_word_to_tree(tree[word[0]], word[1:], index, article) # recursive call, cut first letter and go to appropriate subtree
 
-def search(s, top=10):
-    if(os.path.isfile('trees/'+s[0]+'.tree') == True):
-        file = open('trees/'+s[0]+'.tree', 'rb+')
-        tree = pickle.load(file)
-        file.close()
-        return search_helper(s[1:], tree, top)
-    else:
-        return "Not found"
 
-def search_helper(s, tree, top):
-    if (len(s) < 1):
-        print('Invalid search string')
-        return {}
-    if (len(s) == 1):
-        return tree[s]['nodes']
-    else:
-        add_word_to_tree(tree[word[0]], word[1:], index, article) # recursive call, cut first letter and go to appropriate subtree
+def add_word_to_dict(word_dict, word, index, article):
+    if word not in word_dict.keys():
+        word_dict[word] = {article : []}
+    if article not in word_dict[word].keys():
+        word_dict[word][article] = []
+    word_dict[word][article].append(index)
 
-def search(s, top=10):
-    if(os.path.isfile('trees/'+s[0]+'.tree') == True):
-        file = open('trees/'+s[0]+'.tree', 'rb+')
-        tree = pickle.load(file)
-        file.close()
-        return search_helper(s[1:], tree, top)
-    else:
-        return "Not found"
+def add_article_to_dict(string, article, clean = False):
+    words = [[m.group(0), m.start()] for m in re.finditer(r'\S+', string)]
+    sorted_words = sorted(words, key=itemgetter(0)) # sort the list to save the hard drive
+    
+    folder = 'dicts/'
+    current_char = ""
+    file = ""
+    word_dict = {}
+    
+    for word in sorted_words:
+        index = word[1]
+        word = word[0]
+        char = word[0]
+        
+        if (current_char != char):
+            if (current_char != ""):
+                file = open(folder+current_char, 'wb+')
+                pickle.dump(word_dict, file)
+                file.close()
+            
+            current_char = char
+            if (os.path.isfile(folder+current_char) != True):
+                file = open(folder+current_char, 'wb+')
+                pickle.dump({}, file)
+                file.close()
+            
+            if (clean): word_dict = {}
+            else :
+                file = open(folder+char, 'rb+')
+                word_dict = pickle.load(file)
+                file.close()
+        
+        add_word_to_dict(word_dict, word, index, article)
 
-def search_helper(s, tree, top):
-    if (len(s) < 1):
-        print('Invalid search string')
-        return {}
-    if (len(s) == 1):
-        return tree[s]['nodes'].items()[0:top-1]
-    else:
-        return {} if s[0] not in tree.keys() else search_helper(s[1:], tree[s[0]], top)
+    file = open(folder+char, 'wb+')
+    pickle.dump(word_dict, file)
+    file.close()
+    
+    
 
 class WikiContentHandler(xml.sax.ContentHandler):
     
@@ -228,7 +198,9 @@ class WikiContentHandler(xml.sax.ContentHandler):
             print("Parsing " + self.name + " finished")
             
             # Add to tree
-            hash_tree(self.result, self.tag, clean = True)
+            #hash_tree(self.result, self.tag, clean = True)
+            
+            
             
             # Reset
             self.tag = ""
@@ -246,30 +218,6 @@ class WikiContentHandler(xml.sax.ContentHandler):
         if (self.text):
             self.result = self.result + content
         
-        
-
-parser = xml.sax.make_parser()
-parser.setContentHandler(WikiContentHandler())
-parser.parse(open("../../../wikipedia/enwiki-20170820-pages-meta-current.xml","r", encoding="utf8"))
-
-#preprocess_all_articles()
-
-#cat_string = preprocess_article('articles/Cat')
-#dog_string = preprocess_article('articles/Dog')
-#string_test = 'a cat is not nice'
-
-#tree = {}
-#tree = hash_tree(cat_string, 'Cat')
-#tree = hash_tree(cat_string, 'Dog')
-
-#path = 'articles/Cat'
-
-#file_read = open(path, 'rb+')
-#cat = pickle.load(file_read)
-#file_read.close()
-
-#print(search('mammal'))
-
 
 
 
